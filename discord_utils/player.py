@@ -5,6 +5,7 @@ import logging
 from discord_utils import embed_generator
 from discord_utils.dynamic_volume import DynamicVolumeTransformer, register_audio_source, unregister_audio_source
 from discord_utils.dynamic_bass_boost import register_bass_boost, unregister_bass_boost
+from discord_utils.dynamic_earrape import register_earrape, unregister_earrape
 from platform_handlers import music_url_getter
 from ddl_retrievers.universal_ddl_retriever import YouTubeError
 from db_utils import db_utils
@@ -55,28 +56,30 @@ async def play(ctx: discord.ApplicationContext, queue_url: str):
                 raise Exception("Not connected to voice.")
             
         try:
-            # Get the current volume and bass boost for this guild
             volume = await db_utils.get_volume(ctx.guild.id)
             bass_boost = await db_utils.get_bass_boost(ctx.guild.id)
+            earrape_enabled = await db_utils.get_earrape(ctx.guild.id)
 
-            # Build FFmpeg filter chain with bass boost
-            # bass_boost ranges from 0.0 to 2.0, converted to dB gain (-12dB to 12dB)
-            bass_db = (bass_boost - 1.0) * 12  # Convert 0-2 range to -12 to 12 dB
+            # loudnorm: normalize volume levels (I=-25:TP=-1.5:LRA=11)
+            # equalizer: boost bass at 100Hz with gain adjustment based on bass_boost
+            bass_db = (bass_boost - 1.0) * 12
             filter_audio = f'loudnorm=I=-25:TP=-1.5:LRA=11,equalizer=f=100:t=h:width_type=o:width=2:g={bass_db:.1f}'
 
-            # Use FFmpeg audio normalization and bass boost filters
+            # acrusher: aggressive distortion filter for earrape effect
+            if earrape_enabled:
+                filter_audio += ',acrusher=level_in=8:level_out=8:bits=8:mode=log'
+
             audio_source = discord.FFmpegPCMAudio(
                 music_information.streaming_url,
                 options=f'-vn -filter:a "{filter_audio}"',
                 before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
             )
 
-            # Apply dynamic volume transformation
             audio_source = DynamicVolumeTransformer(audio_source, volume=volume)
 
-            # Register the audio source for real-time volume control and bass boost
             register_audio_source(ctx.guild.id, audio_source)
             register_bass_boost(ctx.guild.id, bass_boost)
+            register_earrape(ctx.guild.id, earrape_enabled)
             
             # Stop any currently playing audio before starting new playback
             if voice_client.is_playing():
@@ -98,9 +101,9 @@ async def play(ctx: discord.ApplicationContext, queue_url: str):
             logger.error(f"Error during playback monitoring: {e}")
             # Don't raise here, just log the error
         finally:
-            # Unregister the audio source when playback finishes
             unregister_audio_source(ctx.guild.id)
             unregister_bass_boost(ctx.guild.id)
+            unregister_earrape(ctx.guild.id)
                 
     except YouTubeError as e:
         # Don't overwrite the specific YouTube error message that was already set
