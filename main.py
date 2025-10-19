@@ -21,6 +21,7 @@ from db_utils.db import setup_db
 import db_utils.db_utils as db_utils
 from discord_utils import embed_generator, player
 from discord_utils.dynamic_volume import set_guild_volume, adjust_guild_volume, get_guild_current_volume
+from discord_utils.dynamic_bass_boost import set_guild_bass_boost, adjust_guild_bass_boost, get_guild_current_bass_boost
 from ai_server_utils import rvc_server_checker
 from platform_handlers import music_url_getter
 from ddl_retrievers.universal_ddl_retriever import YouTubeError
@@ -433,6 +434,156 @@ async def volume_down(ctx):
                 await ctx.send(embed=await embed_generator.create_error_embed("Error", "An error occurred while adjusting volume"))
             else:
                 await ctx.respond(embed=await embed_generator.create_error_embed("Error", "An error occurred while adjusting volume"))
+        except Exception as send_error:
+            app_logger.error(f"Failed to send error message: {send_error}")
+
+@bot.command(aliases=['bass', 'b', 'lowend'])
+async def bass_boost(ctx, *, level=None):
+    try:
+        guild = await db_utils.get_guild(ctx.guild.id)
+        if not guild:
+            if ctx.message:
+                await ctx.send(embed=await embed_generator.create_error_embed("Error", "Bot is not connected to a Voice channel"))
+            else:
+                await ctx.respond(embed=await embed_generator.create_error_embed("Error", "Bot is not connected to a Voice channel"))
+            return
+
+        if level is None:
+            # Get current bass boost
+            current_bass_boost_float = get_guild_current_bass_boost(ctx.guild.id)
+            if current_bass_boost_float is None:
+                current_bass_boost_float = guild.bass_boost
+
+            current_bass_boost = int(current_bass_boost_float * 100)
+            bass_bar = "█" * (current_bass_boost // 20) + "░" * (10 - current_bass_boost // 20)
+
+            if ctx.message:
+                await ctx.send(embed=await embed_generator.create_embed("🎸 Current Bass Boost", f"{current_bass_boost}% [{bass_bar}]"))
+            else:
+                await ctx.respond(embed=await embed_generator.create_embed("🎸 Current Bass Boost", f"{current_bass_boost}% [{bass_bar}]"))
+        else:
+            # Set bass boost
+            try:
+                bass_boost_level = int(level)
+                if bass_boost_level < 0 or bass_boost_level > 200:
+                    raise ValueError("Bass boost must be between 0 and 200")
+
+                bass_boost_float = bass_boost_level / 100.0
+
+                # Update database
+                success = await db_utils.set_bass_boost(ctx.guild.id, bass_boost_float)
+
+                # Update real-time bass boost if currently playing
+                realtime_updated = set_guild_bass_boost(ctx.guild.id, bass_boost_float)
+
+                if success:
+                    bass_bar = "█" * (bass_boost_level // 20) + "░" * (10 - bass_boost_level // 20)
+
+                    status_text = f"Bass boost set to {bass_boost_level}% [{bass_bar}]"
+
+                    if ctx.message:
+                        await ctx.message.add_reaction("🎸")
+                    else:
+                        await ctx.respond(embed=await embed_generator.create_success_embed("🎸 Bass Boost Set", status_text))
+                else:
+                    if ctx.message:
+                        await ctx.send(embed=await embed_generator.create_error_embed("Error", "Failed to set bass boost"))
+                    else:
+                        await ctx.respond(embed=await embed_generator.create_error_embed("Error", "Failed to set bass boost"))
+
+            except ValueError:
+                if ctx.message:
+                    await ctx.send(embed=await embed_generator.create_error_embed("Invalid Bass Boost", "Please enter a number between 0 and 200"))
+                else:
+                    await ctx.respond(embed=await embed_generator.create_error_embed("Invalid Bass Boost", "Please enter a number between 0 and 200"))
+
+    except Exception as e:
+        app_logger.error(f"Error in bass_boost command: {e}")
+        try:
+            if ctx.message:
+                await ctx.send(embed=await embed_generator.create_error_embed("Error", "An error occurred while setting bass boost"))
+            else:
+                await ctx.respond(embed=await embed_generator.create_error_embed("Error", "An error occurred while setting bass boost"))
+        except Exception as send_error:
+            app_logger.error(f"Failed to send error message: {send_error}")
+
+@bot.command(aliases=['bass+', 'bassup', 'more_bass'])
+async def bass_boost_up(ctx):
+    try:
+        guild = await db_utils.get_guild(ctx.guild.id)
+        if not guild:
+            if ctx.message:
+                await ctx.send(embed=await embed_generator.create_error_embed("Error", "Bot is not connected to a Voice channel"))
+            else:
+                await ctx.respond(embed=await embed_generator.create_error_embed("Error", "Bot is not connected to a Voice channel"))
+            return
+
+        # Try real-time adjustment first
+        realtime_bass_boost = adjust_guild_bass_boost(ctx.guild.id, 0.2)
+
+        # Update database
+        new_bass_boost = await db_utils.adjust_bass_boost(ctx.guild.id, 0.2)
+
+        # Use real-time bass boost if available, otherwise use database bass boost
+        bass_boost_to_display = realtime_bass_boost if realtime_bass_boost is not None else new_bass_boost
+
+        bass_boost_level = int(bass_boost_to_display * 100)
+        bass_bar = "█" * (bass_boost_level // 20) + "░" * (10 - bass_boost_level // 20)
+
+        status_text = f"Bass boost increased to {bass_boost_level}% [{bass_bar}]"
+
+        if ctx.message:
+            await ctx.message.add_reaction("🎸")
+        else:
+            await ctx.respond(embed=await embed_generator.create_success_embed("🎸 Bass Boost Up", status_text))
+
+    except Exception as e:
+        app_logger.error(f"Error in bass_boost_up command: {e}")
+        try:
+            if ctx.message:
+                await ctx.send(embed=await embed_generator.create_error_embed("Error", "An error occurred while adjusting bass boost"))
+            else:
+                await ctx.respond(embed=await embed_generator.create_error_embed("Error", "An error occurred while adjusting bass boost"))
+        except Exception as send_error:
+            app_logger.error(f"Failed to send error message: {send_error}")
+
+@bot.command(aliases=['bass-', 'bassdown', 'less_bass'])
+async def bass_boost_down(ctx):
+    try:
+        guild = await db_utils.get_guild(ctx.guild.id)
+        if not guild:
+            if ctx.message:
+                await ctx.send(embed=await embed_generator.create_error_embed("Error", "Bot is not connected to a Voice channel"))
+            else:
+                await ctx.respond(embed=await embed_generator.create_error_embed("Error", "Bot is not connected to a Voice channel"))
+            return
+
+        # Try real-time adjustment first
+        realtime_bass_boost = adjust_guild_bass_boost(ctx.guild.id, -0.2)
+
+        # Update database
+        new_bass_boost = await db_utils.adjust_bass_boost(ctx.guild.id, -0.2)
+
+        # Use real-time bass boost if available, otherwise use database bass boost
+        bass_boost_to_display = realtime_bass_boost if realtime_bass_boost is not None else new_bass_boost
+
+        bass_boost_level = int(bass_boost_to_display * 100)
+        bass_bar = "█" * (bass_boost_level // 20) + "░" * (10 - bass_boost_level // 20)
+
+        status_text = f"Bass boost decreased to {bass_boost_level}% [{bass_bar}]"
+
+        if ctx.message:
+            await ctx.message.add_reaction("🎸")
+        else:
+            await ctx.respond(embed=await embed_generator.create_success_embed("🎸 Bass Boost Down", status_text))
+
+    except Exception as e:
+        app_logger.error(f"Error in bass_boost_down command: {e}")
+        try:
+            if ctx.message:
+                await ctx.send(embed=await embed_generator.create_error_embed("Error", "An error occurred while adjusting bass boost"))
+            else:
+                await ctx.respond(embed=await embed_generator.create_error_embed("Error", "An error occurred while adjusting bass boost"))
         except Exception as send_error:
             app_logger.error(f"Failed to send error message: {send_error}")
 
@@ -880,6 +1031,18 @@ async def volume_up_slash(ctx):
 async def volume_down_slash(ctx):
     await volume_down(ctx)
 
+@bot.slash_command(name="bass_boost")
+async def bass_boost_slash(ctx, level: int = None):
+    await bass_boost(ctx, level=level)
+
+@bot.slash_command(name="bass_boost_up")
+async def bass_boost_up_slash(ctx):
+    await bass_boost_up(ctx)
+
+@bot.slash_command(name="bass_boost_down")
+async def bass_boost_down_slash(ctx):
+    await bass_boost_down(ctx)
+
 # if isServerRunning:
 #     @bot.slash_command(
 #         name="play_with_ai_voice",
@@ -1010,15 +1173,23 @@ async def bot_status(ctx):
             if current_volume_float is None:
                 current_volume_float = guild.volume
             volume_status = f"🔊 {int(current_volume_float * 100)}%"
-            
+
+            # Get real-time bass boost if available, otherwise use database bass boost
+            current_bass_boost_float = get_guild_current_bass_boost(ctx.guild.id)
+            if current_bass_boost_float is None:
+                current_bass_boost_float = guild.bass_boost
+            bass_boost_status = f"🎸 {int(current_bass_boost_float * 100)}%"
+
             status_embed.add_field(name="Loop", value=loop_status, inline=True)
             status_embed.add_field(name="Shuffle", value=shuffle_status, inline=True)
             status_embed.add_field(name="Volume", value=volume_status, inline=True)
+            status_embed.add_field(name="Bass Boost", value=bass_boost_status, inline=True)
         else:
             status_embed.add_field(name="📝 Queue", value="No active session", inline=True)
             status_embed.add_field(name="Loop", value="⏹️ Off", inline=True)
             status_embed.add_field(name="Shuffle", value="➡️ Off", inline=True)
             status_embed.add_field(name="Volume", value="🔊 100%", inline=True)
+            status_embed.add_field(name="Bass Boost", value="🎸 100%", inline=True)
           # Server info
         latency = round(bot.latency * 1000)
         status_embed.add_field(name="📡 Latency", value=f"{latency}ms", inline=True)
