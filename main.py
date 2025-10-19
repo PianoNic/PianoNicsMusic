@@ -25,6 +25,7 @@ from ai_server_utils import rvc_server_checker
 from platform_handlers import music_url_getter
 from ddl_retrievers.universal_ddl_retriever import YouTubeError
 from utils import get_version, get_full_version_info, get_version_info
+from utils.yt_dlp_updater import scheduled_update_check
 
 load_dotenv()
 
@@ -115,17 +116,21 @@ async def on_ready():
     await bot.change_presence(status=discord.Status.do_not_disturb, activity=discord.Activity(type=discord.ActivityType.listening, name="to da kuhle songs"))
     if bot.user:
         app_logger.info(f"Bot is ready and logged in as {bot.user.name}")
-    
+
+    if not any(task.get_name() == 'yt-dlp-update-check' for task in asyncio.all_tasks()):
+        app_logger.info("Starting yt-dlp update checker background task...")
+        bot.loop.create_task(scheduled_update_check(), name='yt-dlp-update-check')
+
     ask_in_dms = config.getboolean('Bot', 'AskInDMs', fallback=False)
     admin_userid = config.getint('Admin', 'UserID', fallback=0)
-    
+
     if ask_in_dms and admin_userid and bot.user:
         user = await bot.fetch_user(admin_userid)
-        
+
         dm_channel = await user.create_dm()
-        
+
         messages = await dm_channel.history().flatten()
-        
+
         for msg in messages:
             try:
                 await msg.delete()
