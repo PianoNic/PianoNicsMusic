@@ -243,7 +243,7 @@ async def adjust_volume(guild_id: int, adjustment: float) -> float:
         guild: Guild | None = Guild.get_or_none(Guild.id == guild_id)
         if not guild:
             return 1.0
-        
+
         new_volume = max(0.0, min(1.0, guild.volume + adjustment))
         guild.volume = new_volume
         guild.save()
@@ -251,3 +251,42 @@ async def adjust_volume(guild_id: int, adjustment: float) -> float:
     except Exception as e:
         logger.error(f"Error adjusting volume for guild {guild_id}: {e}")
         return 1.0
+
+async def set_bass_boost(guild_id: int, bass_level: float) -> bool:
+    try:
+        bass_level = max(0.0, min(2.0, bass_level))
+
+        guild: Guild | None = Guild.get_or_none(Guild.id == guild_id)
+        if not guild:
+            return False
+
+        guild.bass_boost = bass_level
+        guild.save()
+        return True
+    except Exception as e:
+        logger.error(f"Error setting bass boost for guild {guild_id}: {e}")
+        return False
+
+async def get_bass_boost(guild_id: int) -> float:
+    try:
+        guild: Guild | None = Guild.get_or_none(Guild.id == guild_id)
+        if not guild:
+            return 0.0
+        return guild.bass_boost
+    except Exception as e:
+        logger.error(f"Error getting bass boost for guild {guild_id}: {e}")
+        return 0.0
+
+async def adjust_bass_boost(guild_id: int, adjustment: float) -> float:
+    try:
+        guild: Guild | None = Guild.get_or_none(Guild.id == guild_id)
+        if not guild:
+            return 0.0
+
+        new_bass_boost = max(0.0, min(2.0, guild.bass_boost + adjustment))
+        guild.bass_boost = new_bass_boost
+        guild.save()
+        return new_bass_boost
+    except Exception as e:
+        logger.error(f"Error adjusting bass boost for guild {guild_id}: {e}")
+        return 0.0
