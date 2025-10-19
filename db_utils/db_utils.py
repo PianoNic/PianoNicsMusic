@@ -290,3 +290,39 @@ async def adjust_bass_boost(guild_id: int, adjustment: float) -> float:
     except Exception as e:
         logger.error(f"Error adjusting bass boost for guild {guild_id}: {e}")
         return 0.0
+
+async def set_earrape(guild_id: int, enabled: bool) -> bool:
+    try:
+        guild: Guild | None = Guild.get_or_none(Guild.id == guild_id)
+        if not guild:
+            return False
+
+        guild.earrape = enabled
+        guild.save()
+        return True
+    except Exception as e:
+        logger.error(f"Error setting earrape for guild {guild_id}: {e}")
+        return False
+
+async def get_earrape(guild_id: int) -> bool:
+    try:
+        guild: Guild | None = Guild.get_or_none(Guild.id == guild_id)
+        if not guild:
+            return False
+        return guild.earrape
+    except Exception as e:
+        logger.error(f"Error getting earrape for guild {guild_id}: {e}")
+        return False
+
+async def toggle_earrape(guild_id: int) -> bool:
+    try:
+        guild: Guild | None = Guild.get_or_none(Guild.id == guild_id)
+        if not guild:
+            return False
+
+        guild.earrape = not guild.earrape
+        guild.save()
+        return guild.earrape
+    except Exception as e:
+        logger.error(f"Error toggling earrape for guild {guild_id}: {e}")
+        return False

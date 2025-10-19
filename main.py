@@ -22,6 +22,7 @@ import db_utils.db_utils as db_utils
 from discord_utils import embed_generator, player
 from discord_utils.dynamic_volume import set_guild_volume, adjust_guild_volume, get_guild_current_volume
 from discord_utils.dynamic_bass_boost import set_guild_bass_boost, adjust_guild_bass_boost, get_guild_current_bass_boost
+from discord_utils.dynamic_earrape import set_guild_earrape, toggle_guild_earrape, get_guild_earrape
 from ai_server_utils import rvc_server_checker
 from platform_handlers import music_url_getter
 from ddl_retrievers.universal_ddl_retriever import YouTubeError
@@ -587,6 +588,42 @@ async def bass_boost_down(ctx):
         except Exception as send_error:
             app_logger.error(f"Failed to send error message: {send_error}")
 
+@bot.command(aliases=['ear', 'rape', 'er'])
+async def earrape(ctx):
+    try:
+        guild = await db_utils.get_guild(ctx.guild.id)
+        if not guild:
+            if ctx.message:
+                await ctx.send(embed=await embed_generator.create_error_embed("Error", "Bot is not connected to a Voice channel"))
+            else:
+                await ctx.respond(embed=await embed_generator.create_error_embed("Error", "Bot is not connected to a Voice channel"))
+            return
+
+        is_enabled = await db_utils.toggle_earrape(ctx.guild.id)
+        toggle_guild_earrape(ctx.guild.id)
+
+        if is_enabled:
+            status_text = "Earrape enabled"
+            emoji = "📢"
+        else:
+            status_text = "Earrape disabled"
+            emoji = "🔇"
+
+        if ctx.message:
+            await ctx.message.add_reaction(emoji)
+        else:
+            await ctx.respond(embed=await embed_generator.create_success_embed(f"{emoji} Earrape", status_text))
+
+    except Exception as e:
+        app_logger.error(f"Error in earrape command: {e}")
+        try:
+            if ctx.message:
+                await ctx.send(embed=await embed_generator.create_error_embed("Error", "An error occurred while toggling earrape"))
+            else:
+                await ctx.respond(embed=await embed_generator.create_error_embed("Error", "An error occurred while toggling earrape"))
+        except Exception as send_error:
+            app_logger.error(f"Failed to send error message: {send_error}")
+
 @bot.command()
 async def stop(ctx):
     await leave(ctx)
@@ -1043,6 +1080,10 @@ async def bass_boost_up_slash(ctx):
 async def bass_boost_down_slash(ctx):
     await bass_boost_down(ctx)
 
+@bot.slash_command(name="earrape")
+async def earrape_slash(ctx):
+    await earrape(ctx)
+
 # if isServerRunning:
 #     @bot.slash_command(
 #         name="play_with_ai_voice",
@@ -1180,16 +1221,20 @@ async def bot_status(ctx):
                 current_bass_boost_float = guild.bass_boost
             bass_boost_status = f"🎸 {int(current_bass_boost_float * 100)}%"
 
+            earrape_status = "📢 On" if guild.earrape else "🔇 Off"
+
             status_embed.add_field(name="Loop", value=loop_status, inline=True)
             status_embed.add_field(name="Shuffle", value=shuffle_status, inline=True)
             status_embed.add_field(name="Volume", value=volume_status, inline=True)
             status_embed.add_field(name="Bass Boost", value=bass_boost_status, inline=True)
+            status_embed.add_field(name="Earrape", value=earrape_status, inline=True)
         else:
             status_embed.add_field(name="📝 Queue", value="No active session", inline=True)
             status_embed.add_field(name="Loop", value="⏹️ Off", inline=True)
             status_embed.add_field(name="Shuffle", value="➡️ Off", inline=True)
             status_embed.add_field(name="Volume", value="🔊 100%", inline=True)
             status_embed.add_field(name="Bass Boost", value="🎸 100%", inline=True)
+            status_embed.add_field(name="Earrape", value="🔇 Off", inline=True)
           # Server info
         latency = round(bot.latency * 1000)
         status_embed.add_field(name="📡 Latency", value=f"{latency}ms", inline=True)
