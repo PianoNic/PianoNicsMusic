@@ -2,7 +2,6 @@ import subprocess
 import logging
 import asyncio
 from datetime import timedelta
-from typing import tuple
 
 logger = logging.getLogger(__name__)
 
