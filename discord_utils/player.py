@@ -34,7 +34,7 @@ async def build_filter(guild_id: int) -> str:
     return audio_filter
 
 
-async def wait_until_finished(voice_client: discord.VoiceClient, finished: asyncio.Event):
+async def wait_until_finished(voice_client, finished: asyncio.Event):
     while not finished.is_set():
         if not voice_client.is_connected():
             return
@@ -74,7 +74,7 @@ async def play(ctx: discord.ApplicationContext, queue_url: str):
     except Exception as error:
         logger.error(f"Error updating loading message: {error}")
 
-    voice_client: discord.VoiceClient = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
+    voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
 
     if not voice_client or not voice_client.is_connected():
         raise RuntimeError("Bot is not connected to a voice channel")

@@ -104,6 +104,13 @@ python main.py
 
 Needs FFmpeg on `PATH`, a `DISCORD_TOKEN`, and an ArgonFetch instance. Point `ARGONFETCH_URL` at your own; without it the bot looks for `http://argonfetch:8080`.
 
+Tests:
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests/
+```
+
 </details>
 
 ## Commands

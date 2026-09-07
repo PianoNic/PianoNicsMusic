@@ -66,12 +66,12 @@ class BotStatus(commands.Cog):
 
         await responses.reply(ctx, embed)
 
-    @commands.command(aliases=['status', 'current', 'now_playing'])
-    async def bot_status(self, ctx):
+    @commands.command(name='bot_status', aliases=['status', 'current', 'now_playing'])
+    async def status(self, ctx):
         await self.run(ctx)
 
     @discord.slash_command(name="bot_status", description="Shows current bot and queue status")
-    async def bot_status_slash(self, ctx):
+    async def status_slash(self, ctx):
         await self.run(ctx)
 
 
