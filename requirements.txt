@@ -4,15 +4,10 @@ git+https://github.com/Pycord-Development/pycord
 PyNaCl
 # Pycord aiohttp speedup
 aiodns
-brotlipy
+Brotli
 charset-normalizer
 # Rest
-pytube
-yt_dlp
-beautifulsoup4
-spotdl
-spotipy
+aiohttp
+requests
 python-dotenv
-ytmusicapi
 peewee
-spotapi

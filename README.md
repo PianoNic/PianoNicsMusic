@@ -1,175 +1,155 @@
-# <p align="center">PianoNic's Music Bot</p>
 <p align="center">
-  <img src="https://github.com/Pianonic/PianoNicsMusic/blob/main/image/Logo.png?raw=true" width="200" alt="PianoNic's Music Bot Logo">
+  <img src="image/Logo.png" width="180" alt="PianoNic's Music Bot Logo" />
 </p>
 <p align="center">
-  <strong>Bring music to your Discord server with a smart, versatile bot.</strong>
-  Built with Python and Pycord.
+  <strong>PianoNic's Music Bot</strong><br/>
+  Paste a link. It plays. Nothing to register.
 </p>
 <p align="center">
-  <a href="https://github.com/Pianonic/PianoNicsMusic"><img src="https://badgetrack.pianonic.ch/badge?tag=piano-nics-music&label=visits&color=2c234a&style=flat" alt="visits" /></a>
-  <a href="https://github.com/Pianonic/PianoNicsMusic/blob/main/LICENSE.md"><img src="https://img.shields.io/badge/License-CC%20BY--NC%204.0-2c234a.svg?style=flat" alt="License: CC BY-NC 4.0"/></a>
-  <a href="https://github.com/Pianonic/PianoNicsMusic/releases"><img src="https://img.shields.io/github/v/release/Pianonic/PianoNicsMusic?include_prereleases&color=2c234a&label=Latest%20Release"/></a>
+  <a href="https://github.com/PianoNic/PianoNicsMusic"><img src="https://badgetrack.pianonic.ch/badge?tag=piano-nics-music&label=visits&color=2c234a&style=flat" alt="visits" /></a>
+  <a href="https://github.com/PianoNic/PianoNicsMusic/releases"><img src="https://img.shields.io/github/v/release/PianoNic/PianoNicsMusic?include_prereleases&color=2c234a&label=Latest%20Release" alt="Latest release" /></a>
+  <a href="https://github.com/ArgonFetch/ArgonFetch"><img src="https://img.shields.io/badge/Powered%20by-ArgonFetch-2c234a.svg" alt="ArgonFetch" /></a>
+  <img src="https://img.shields.io/badge/Python-3.13-2c234a.svg" alt="Python 3.13" />
 </p>
 
-## 🚀 Features
+---
 
-- **🎵 Music Playback**: Play songs directly in your Discord server's voice channels
-- **🌐 Flexible Sources**: Supports music from streaming services, URLs, and local files
-- **🗣️ AI Voice Integration**: Unique feature to play music using a trained AI voice (In Development)
-- **📜 Queue Management**: Add, remove, skip, loop, and shuffle tracks easily
-- **👌 Simple Commands**: User-friendly slash commands for all music controls
-- **🛡️ Stable & Reliable**: Built with robust error handling to keep the music playing
-- **🐳 Docker Ready**: Easy deployment with pre-built Docker images
+## What is PianoNic's Music Bot?
 
-## 🛠️ Installation
+A Discord music bot that plays whatever you paste at it - a YouTube link, a Spotify album, a SoundCloud set, a TikTok, a file you dragged into the channel, or just the name of a song.
 
-### Using Docker (Recommended)
+It does not resolve any of that itself. Every link goes to [ArgonFetch](https://github.com/ArgonFetch/ArgonFetch), which runs beside the bot in its own container and answers with the title, the artwork and a stream to play. That is one moving part instead of a retriever per platform, and it is the part that keeps its own yt-dlp current - every twelve hours, without rebuilding the bot. When a source changes something, ArgonFetch catches up on its own.
 
-#### Option 1: Pull and Run a Pre-built Image
-You can pull the latest pre-built image from Docker Hub or GitHub Container Registry.
+No API keys. Spotify included.
 
-**Docker Hub:**
-```bash
-docker pull pianonic/pianonicsmusic:latest
-```
+## Features
 
-**GitHub Container Registry:**
-```bash
-docker pull ghcr.io/pianonic/pianonicsmusic:latest
-```
+- **Anything with a link**: YouTube, Spotify, SoundCloud, TikTok, Instagram, direct audio files, Discord attachments, and everything else yt-dlp reaches.
+- **Search without a link**: type a song name and the first sensible result plays.
+- **Real playlists**: a YouTube playlist, Spotify album or SoundCloud set resolves in one call, and the queue shows every track's title and artist before any of them play.
+- **Spotify without credentials**: metadata comes off the public pages and the audio from the matching YouTube Music result, so a Spotify link shows Spotify's title and cover art.
+- **Queue control**: skip, loop, shuffle, force-play a track next, and see what is coming.
+- **Sound shaping**: per-server volume and bass, adjusted live on the playing track. Earrape, if that is your thing.
+- **Slash and prefix**: every command works as `/play` or as `.play`, `!play`, `$play`.
+- **Stays up**: a source that is region-locked, private or DRM-protected is reported and skipped rather than killing the queue.
 
-Then, run the container with your bot token:
-```bash
-docker run -d --name pianonic-music-bot -e DISCORD_TOKEN=YOUR_DISCORD_TOKEN pianonic/pianonicsmusic:latest
-```
+## Get started
 
-#### Option 2: Run with Docker Compose (Recommended)
-**1. Create a `.env` file:**  
-Create a `.env` file in your project directory and add your credentials:
-```properties
-# Paste your bot token here
-DISCORD_TOKEN=YOUR_DISCORD_TOKEN
+**1. Create `compose.yml`:**
 
-# Optional: Add Spotify credentials for faster Spotify link loading
-# Get them from https://developer.spotify.com/dashboard
-SPOTIFY_CLIENT_ID=YOUR_SPOTIFY_CLIENT_ID
-SPOTIFY_CLIENT_SECRET=YOUR_SPOTIFY_CLIENT_SECRET
-```
-
-**2. Create a `compose.yml` file:**  
-Use your favorite editor to create a `compose.yml` file and paste this into it:
 ```yaml
 services:
   pianonic-music-bot:
-    image: pianonic/pianonicsmusic:latest # Uses the image from Docker Hub
-    # image: ghcr.io/pianonic/pianonicsmusic:latest # Uses the image from GitHub Container Registry
+    image: pianonic/pianonicsmusic:latest
     container_name: pianonic-music-bot
-    env_file: .env
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - ARGONFETCH_URL=http://argonfetch:8080
+    depends_on:
+      - argonfetch
     restart: unless-stopped
+
+  argonfetch:
+    image: ghcr.io/argonfetch/argonfetch:latest
+    container_name: pianonic-music-argonfetch
+    environment:
+      - Plugins__Repositories__0=https://raw.githubusercontent.com/ArgonFetch/ArgonFetchPlugins/repo/index.json
+      - Plugins__Install__0=spotify
+      - Plugins__Install__1=tiktok
+    volumes:
+      # yt-dlp and FFmpeg are fetched on boot rather than baked in. Keeping them
+      # here means a restart reuses them instead of downloading 100MB again.
+      - argonfetch-tools:/tools
+    restart: unless-stopped
+
+volumes:
+  argonfetch-tools:
+```
+
+**2. Create `.env` next to it:**
+
+```env
+DISCORD_TOKEN=your-token-here
 ```
 
 **3. Start it:**
+
 ```bash
 docker compose up -d
 ```
 
-### Manual Installation
+ArgonFetch spends its first few seconds fetching yt-dlp and FFmpeg, and answers `503` until it is done. The bot waits and retries, so an early `/play` resolves a moment later rather than failing.
+
+<details>
+<summary><strong>Creating the Discord bot</strong></summary>
+
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications) and click **New Application**.
+2. Under **Bot**, click **Reset Token** and copy it. That is your `DISCORD_TOKEN`.
+3. Under **OAuth2 → URL Generator**, tick the `bot` and `applications.commands` scopes.
+4. Under Bot Permissions, tick **Connect** and **Speak**.
+5. Open the generated URL and invite the bot to your server.
+
+</details>
+
+<details>
+<summary><strong>Running without Docker</strong></summary>
 
 ```bash
-# Clone the repository
-git clone https://github.com/Pianonic/PianoNicsMusic.git
+git clone https://github.com/PianoNic/PianoNicsMusic.git
 cd PianoNicsMusic
-
-# Create a virtual environment
-python -m venv venv
-# On Linux/macOS:
-source venv/bin/activate
-# On Windows:
-# venv\Scripts\activate
-
-# Install dependencies
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-
-# Configure your bot token in config.ini or environment variables
-# Run the bot
 python main.py
 ```
 
-## 🎧 Getting Started
+Needs FFmpeg on `PATH`, a `DISCORD_TOKEN`, and an ArgonFetch instance. Point `ARGONFETCH_URL` at your own; without it the bot looks for `http://argonfetch:8080`.
 
-### Step 1: Create Your Discord Bot
-1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and **log in**
-2. Click **"New Application"** and give your bot a name (e.g., "My Music Bot")
-3. On the left menu, go to the **"Bot"** tab
-4. Click **"Reset Token"**, then **"Yes, do it!"**, and **copy the token**. This is your `DISCORD_TOKEN`. Keep it secret!
-5. Go to the **"OAuth2" -> "URL Generator"** tab
-6. Select the **`bot`** and **`applications.commands`** scopes
-7. Under "Bot Permissions", choose **"Connect"** and **"Speak"**
-8. **Copy the generated URL** at the bottom, paste it into your browser, and invite the bot to your server
+</details>
 
-### Step 2: Deploy the Bot
-Follow the installation instructions above to deploy your bot using Docker or manual installation.
+## Commands
 
-> **Note:** The bot works without Spotify credentials, but they are highly recommended to make Spotify links load up to 60% faster.
+Every command works as a slash command and behind the `.`, `!` and `$` prefixes.
 
-## 🛠️ Usage
+| Command | Aliases | What it does |
+| :--- | :--- | :--- |
+| `play` | `p`, `pl`, `add`, `enqueue` | Play a link, a search, or an attached file |
+| `force_play` | `fp`, `forceplay` | Put a track next in line |
+| `pause` / `resume` | `hold` / `continue` | Pause and resume |
+| `skip` | `next`, `play_next` | Skip the current track |
+| `stop` / `leave` | `disconnect`, `bye` | Stop, clear the queue and disconnect |
+| `loop` | `lp`, `repeat` | Loop the queue |
+| `shuffle` | | Randomise the queue order |
+| `queue` | `q`, `list` | Show what is playing and what is next |
+| `bot_status` | `status`, `now_playing` | Connection, queue and filter state |
+| `volume` | `v`, `vol` | Set or show volume (0-100) |
+| `volume_up` / `volume_down` | `vol+` / `vol-` | Step volume by 10% |
+| `bass_boost` | `bass`, `b` | Set or show bass (0-200, 100 is flat) |
+| `earrape` | `ear`, `er` | Toggle the distortion filter |
+| `help` | `h`, `cmds` | List every command |
+| `ping` | | Round-trip latency |
+| `information` | `ver`, `version` | Version and runtime info |
 
-Control the bot with these simple slash commands in your server's text channels.
+## Configuration
 
-### 🎵 Music Playback
+| Variable | Required | Description |
+| :--- | :--- | :--- |
+| `DISCORD_TOKEN` | yes | Your bot token |
+| `ARGONFETCH_URL` | no | ArgonFetch instance. Defaults to `http://argonfetch:8080` |
+| `MAX_QUEUE_TRACKS` | no | Cap on one playlist. Defaults to `500` - some editorial playlists run to five figures |
 
-| Command | Aliases | Description | Example |
-| :--- | :--- | :--- | :--- |
-| `play` | `p`, `pl`, `play_song`, `add`, `enqueue` | Plays a song, adds to queue, or loads from a file. | `play Never Gonna Give You Up` |
-| `pause` | `hold`, `freeze`, `break`, `wait`, `intermission` | Pauses the current song. | `pause` |
-| `resume` | `continue`, `unpause`, `proceed`, `restart`, `go`, `resume_playback` | Resumes playback. | `resume` |
-| `force_play` | `fp`, `forceplay`, `playforce` | Plays a song right after the current one finishes. | `force_play My Favorite Song` |
+## Troubleshooting
 
-### 🎶 Queue Management
+- **Nothing plays, everything errors.** Check the ArgonFetch container is up: `docker compose logs argonfetch`. The bot has no fallback resolver by design.
+- **"The media service is updating itself."** ArgonFetch is installing a yt-dlp update. It takes seconds; the bot retries on its own.
+- **A single song fails.** Region locks, private videos and DRM-protected SoundCloud tracks are reported and skipped. Nothing to fix.
+- **Bot joins but is silent.** FFmpeg is missing from the bot image, or it lacks Connect and Speak in that channel.
 
-| Command | Aliases | Description | Example |
-| :--- | :--- | :--- | :--- |
-| `skip` | `next`, `advance`, `skip_song`, `move_on`, `play_next` | Skips to the next song. | `skip` |
-| `stop` | | Stops music, clears queue, disconnects bot. | `stop` |
-| `leave` | `exit`, `quit`, `bye`, `farewell`, `goodbye`, `leave_now`, `disconnect`, `stop_playing` | Leaves the voice channel and stops playing audio. | `leave` |
-| `loop` | `lp`, `repeat`, `cycle`, `toggle_loop`, `toggle_repeat` | Toggles looping for the entire queue. | `loop` |
-| `shuffle` | | Toggles randomizing the queue order. | `shuffle` |
-| `bot_status` | `status`, `current`, `now_playing` | Shows current song and upcoming queue. | `bot_status` |
-| `queue` | `q`, `show_queue`, `list`, `queue_list` | Shows the full music queue. | `queue` |
+## License
 
-### 🤖 General Commands
+[CC BY-NC 4.0](LICENSE.md). Copyright PianoNic.
 
-| Command | Aliases | Description | Example |
-| :--- | :--- | :--- | :--- |
-| `help` | `h`, `commands`, `command`, `cmds`, `cmd`, `info`, `assist`, `assistme`, `helpme`, `helppls`, `helpmepls`, `helpmeplease`, `helpmeout`, `helpmeoutpls`, `helpmeoutplease` | Shows a list of all commands. | `help` |
-| `ping` | | Checks the bot's response time. | `ping` |
-| `information` | `v`, `ver`, `version` | Displays bot version and system info. | `information` |
-
-## ⚙️ Technical Details
-
-### Bot Features
-- Built with Pycord for reliable Discord integration
-- Supports multiple audio sources and formats
-- Queue management with loop and shuffle functionality
-- AI voice integration capabilities (in development)
-- Robust error handling and automatic recovery
-
-## 📦 Requirements
-- Python 3.13+
-- Docker (for Docker installation)
-- Discord Bot Token
-- Dependencies: Shown in [requirements.txt](./requirements.txt)
-
-## 🔧 Troubleshooting
-- **Bot won't connect?** Make sure you invited it with "Connect" and "Speak" permissions, and that you are in a voice channel when using the `/play` command
-- **Bot is offline?** If using Docker, run `docker compose ps` to check. If not running, use `docker compose logs` for details
-- **Songs fail to play?** The bot automatically skips problem songs. This can happen if a song is region-locked or unavailable
-
-## 📄 License
-This project is licensed under the CC BY-NC 4.0 License.
-See the [LICENSE.md](https://github.com/Pianonic/PianoNicsMusic/blob/main/LICENSE.md) file for more details.
+Read it, change it, and run it for any noncommercial purpose. Commercial use is not licensed.
 
 ---
-<p align="center">Made with ❤️ by <a href="https://github.com/Pianonic">Pianonic</a></p>
- 
+
+<p align="center">Made with care by <a href="https://github.com/PianoNic">PianoNic</a></p>

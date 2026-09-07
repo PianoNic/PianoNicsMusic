@@ -3,6 +3,7 @@ from unittest.mock import patch, MagicMock
 import asyncio
 from db_utils import db_utils
 from models.dtos.QueueEntryDto import QueueEntryDto
+from media.argonfetch import Track
 
 class TestDBUtils(unittest.IsolatedAsyncioTestCase):
     @patch('db_utils.db_utils.Guild')
@@ -46,21 +47,30 @@ class TestDBUtils(unittest.IsolatedAsyncioTestCase):
         await db_utils.delete_queue(1)
         mock_queue.delete.assert_called_once()
 
+    @patch('db_utils.db_utils.db')
     @patch('db_utils.db_utils.QueueEntry')
-    async def test_add_to_queue_bulk(self, mock_queue):
-        await db_utils.add_to_queue(1, ['url1', 'url2'])
+    async def test_add_to_queue_bulk(self, mock_queue, mock_db):
+        tracks = [
+            Track(url='url1', title='One', author='A', image_url=None),
+            Track(url='url2', title='Two', author='B', image_url=None),
+        ]
+        await db_utils.add_to_queue(1, tracks)
         mock_queue.bulk_create.assert_called_once()
 
+    @patch('db_utils.db_utils.db')
     @patch('db_utils.db_utils.QueueEntry')
-    async def test_add_to_queue_individual(self, mock_queue):
-        mock_queue.bulk_create.side_effect = Exception('fail')
-        await db_utils.add_to_queue(1, ['url1'])
-        mock_queue.create.assert_called_once()
+    async def test_add_to_queue_empty(self, mock_queue, mock_db):
+        await db_utils.add_to_queue(1, [])
+        mock_queue.bulk_create.assert_not_called()
 
     @patch('db_utils.db_utils.QueueEntry')
     async def test_add_force_next_play_to_queue(self, mock_queue):
-        await db_utils.add_force_next_play_to_queue(1, 'url')
-        mock_queue.create.assert_called_once_with(guild=1, url='url', already_played=False, force_play=True)
+        track = Track(url='url', title='One', author='A', image_url=None)
+        await db_utils.add_force_next_play_to_queue(1, track)
+        mock_queue.create.assert_called_once_with(
+            guild=1, url='url', title='One', author='A', image_url=None,
+            already_played=False, force_play=True,
+        )
 
     @patch('db_utils.db_utils.Guild')
     async def test_delete_guild(self, mock_guild):
@@ -69,10 +79,12 @@ class TestDBUtils(unittest.IsolatedAsyncioTestCase):
 
     @patch('db_utils.db_utils.QueueEntry')
     async def test_get_queue(self, mock_queue):
-        mock_entry = MagicMock(url='url', already_played=False)
+        mock_entry = MagicMock(url='url', already_played=False, title='One', author='A')
         mock_queue.select.return_value.where.return_value = [mock_entry]
         result = await db_utils.get_queue(1)
-        self.assertEqual(result, [QueueEntryDto(url='url', already_played=False)])
+        self.assertEqual(
+            result, [QueueEntryDto(url='url', already_played=False, title='One', author='A')]
+        )
 
 if __name__ == '__main__':
     asyncio.run(unittest.main())

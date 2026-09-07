@@ -6,6 +6,22 @@ services:
     container_name: pianonic-music-bot
     environment:
       - DISCORD_TOKEN=${DISCORD_TOKEN}
-      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
-      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
+      - ARGONFETCH_URL=http://argonfetch:8080
+    depends_on:
+      - argonfetch
     restart: unless-stopped
+
+  argonfetch:
+    image: ghcr.io/argonfetch/argonfetch:latest
+    container_name: pianonic-music-argonfetch
+    environment:
+      - CORS_ALLOWED_ORIGINS=http://localhost:8080
+      - Plugins__Repositories__0=https://raw.githubusercontent.com/ArgonFetch/ArgonFetchPlugins/repo/index.json
+      - Plugins__Install__0=spotify
+      - Plugins__Install__1=tiktok
+    volumes:
+      - argonfetch-tools:/tools
+    restart: unless-stopped
+
+volumes:
+  argonfetch-tools:

@@ -6,12 +6,14 @@ from models.dtos.GuildDto import GuildDto
 from models.guild_music_information import Guild
 from models.queue_object import QueueEntry
 from models.mappers import guild_music_information_mapper
+from db_utils.db import db
+from media.argonfetch import Track
 
 logger = logging.getLogger('PianoNicsMusic')
 
 async def create_new_guild(discord_guild_id: int):
     try:
-        Guild.create(id=discord_guild_id, loop_queue=False, shuffle_queue=False, volume=1.0)
+        Guild.create(id=discord_guild_id, loop_queue=False, shuffle_queue=False, volume=1.0, bass_boost=1.0)
     except Exception as e:
         logger.error(f"Error creating guild {discord_guild_id}: {e}")
         # Try to get existing guild if creation failed
@@ -36,34 +38,54 @@ async def delete_queue(guild_id: int):
         logger.error(f"Error deleting queue for guild {guild_id}: {e}")
         # Continue anyway, this is cleanup
 
-async def add_to_queue(guild_id: int, song_urls: List[str]):
-    try:
-        if not song_urls:
-            return
-        queue_entries = [QueueEntry(guild=guild_id, url=url, already_played=False, force_play=False) for url in song_urls]
-        QueueEntry.bulk_create(queue_entries)
-    except Exception as e:
-        logger.error(f"Error adding songs to queue for guild {guild_id}: {e}")
-        # Try adding one by one if bulk create fails
-        try:
-            for url in song_urls:
-                QueueEntry.create(guild=guild_id, url=url, already_played=False, force_play=False)
-        except Exception as e2:
-            logger.error(f"Error adding songs individually: {e2}")
-            raise e2
+async def add_to_queue(guild_id: int, tracks: List[Track]):
+    if not tracks:
+        return
 
-async def add_force_next_play_to_queue(guild_id: int, song_url: str):
-    QueueEntry.create(guild=guild_id, url=song_url, already_played=False, force_play=True)
+    entries = [
+        QueueEntry(
+            guild=guild_id,
+            url=track.url,
+            title=track.title,
+            author=track.author,
+            image_url=track.image_url,
+            already_played=False,
+            force_play=False,
+        )
+        for track in tracks
+    ]
+
+    # A playlist can be hundreds of rows and SQLite caps the variables per statement.
+    with db.atomic():
+        QueueEntry.bulk_create(entries, batch_size=100)
+
+async def add_force_next_play_to_queue(guild_id: int, track: Track):
+    QueueEntry.create(
+        guild=guild_id,
+        url=track.url,
+        title=track.title,
+        author=track.author,
+        image_url=track.image_url,
+        already_played=False,
+        force_play=True,
+    )
 
 async def delete_guild(discord_guild_id: int):
     Guild.delete_by_id(discord_guild_id)
 
 async def get_queue(guild_id: int) -> List[QueueEntryDto]:
     queue_entries = QueueEntry.select().where(QueueEntry.guild == guild_id)
-    queue_dtos = [QueueEntryDto(url=entry.url, already_played=entry.already_played) for entry in queue_entries]
-    return queue_dtos
+    return [
+        QueueEntryDto(
+            url=entry.url,
+            title=entry.title,
+            author=entry.author,
+            already_played=entry.already_played,
+        )
+        for entry in queue_entries
+    ]
 
-async def _get_random_queue_entry(guild_id: int) -> str | None:
+async def _get_random_queue_entry(guild_id: int) -> QueueEntry | None:
     queue_entries = QueueEntry.select().where((QueueEntry.guild == guild_id) & (QueueEntry.already_played == False))
     if not queue_entries:
         return None
@@ -77,29 +99,32 @@ async def _mark_entry_as_listened(entry: QueueEntry):
     except Exception as e:
         logger.error(f"Error marking entry as listened: {e}")
 
+async def _next_entry(guild: Guild, guild_id: int) -> QueueEntry | None:
+    force_play_entry = QueueEntry.get_or_none(
+        (QueueEntry.guild == guild_id) &
+        (QueueEntry.already_played == False) &
+        (QueueEntry.force_play == True)
+    )
+
+    if force_play_entry:
+        return force_play_entry
+
+    if guild.shuffle_queue:
+        return await _get_random_queue_entry(guild_id)
+
+    return QueueEntry.select().where(
+        (QueueEntry.guild == guild_id) &
+        (QueueEntry.already_played == False)
+    ).order_by(QueueEntry.id).first()
+
+
 async def get_queue_entry(guild_id: int) -> str | None:
     try:
         guild: Guild | None = Guild.get_or_none(Guild.id == guild_id)
         if not guild:
             return None
         
-        force_play_entry = QueueEntry.get_or_none(
-            (QueueEntry.guild == guild_id) & 
-            (QueueEntry.already_played == False) & 
-            (QueueEntry.force_play == True)
-        )
-
-        if force_play_entry:
-            entry = force_play_entry
-        
-        elif guild.shuffle_queue:
-            entry = await _get_random_queue_entry(guild_id)
-
-        else:
-            entry = QueueEntry.select().where(
-                (QueueEntry.guild == guild_id) & 
-                (QueueEntry.already_played == False)
-            ).order_by(QueueEntry.id).first()
+        entry = await _next_entry(guild, guild_id)
 
         if entry:
             await _mark_entry_as_listened(entry)
@@ -130,23 +155,7 @@ async def _get_entry_after_reset(guild_id: int) -> str | None:
     if not guild:
         return None
 
-    force_play_entry = QueueEntry.get_or_none(
-        (QueueEntry.guild == guild_id) & 
-        (QueueEntry.already_played == False) & 
-        (QueueEntry.force_play == True)
-    )
-
-    if force_play_entry:
-        entry = force_play_entry
-    
-    elif guild.shuffle_queue:
-        entry = await _get_random_queue_entry(guild_id)
-
-    else:
-        entry = QueueEntry.select().where(
-            (QueueEntry.guild == guild_id) & 
-            (QueueEntry.already_played == False)
-        ).order_by(QueueEntry.id).first()
+    entry = await _next_entry(guild, guild_id)
 
     if entry:
         await _mark_entry_as_listened(entry)
@@ -157,7 +166,7 @@ async def _get_entry_after_reset(guild_id: int) -> str | None:
 async def shuffle_playlist(guild_id: int) -> bool:
     guild: Guild | None = Guild.get_or_none(Guild.id == guild_id)
     if not guild:
-        return None
+        return False
     
     guild.shuffle_queue = not guild.shuffle_queue
     guild.save()
@@ -167,7 +176,7 @@ async def shuffle_playlist(guild_id: int) -> bool:
 async def toggle_loop(guild_id: int) -> bool:
     guild: Guild | None = Guild.get_or_none(Guild.id == guild_id)
     if not guild:
-        return None
+        return False
     
     guild.loop_queue = not guild.loop_queue
     guild.save()
@@ -271,17 +280,17 @@ async def get_bass_boost(guild_id: int) -> float:
     try:
         guild: Guild | None = Guild.get_or_none(Guild.id == guild_id)
         if not guild:
-            return 0.0
+            return 1.0
         return guild.bass_boost
     except Exception as e:
         logger.error(f"Error getting bass boost for guild {guild_id}: {e}")
-        return 0.0
+        return 1.0
 
 async def adjust_bass_boost(guild_id: int, adjustment: float) -> float:
     try:
         guild: Guild | None = Guild.get_or_none(Guild.id == guild_id)
         if not guild:
-            return 0.0
+            return 1.0
 
         new_bass_boost = max(0.0, min(2.0, guild.bass_boost + adjustment))
         guild.bass_boost = new_bass_boost
@@ -289,7 +298,7 @@ async def adjust_bass_boost(guild_id: int, adjustment: float) -> float:
         return new_bass_boost
     except Exception as e:
         logger.error(f"Error adjusting bass boost for guild {guild_id}: {e}")
-        return 0.0
+        return 1.0
 
 async def set_earrape(guild_id: int, enabled: bool) -> bool:
     try:
