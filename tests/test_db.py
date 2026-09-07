@@ -1,6 +1,12 @@
+import asyncio
+import sys
+import types
 import unittest
-from db_utils.db import db, setup_db
+
 from peewee import SqliteDatabase
+
+from db_utils.db import db, setup_db
+
 
 class TestDB(unittest.TestCase):
     def test_db_is_sqlite_memory(self):
@@ -8,22 +14,26 @@ class TestDB(unittest.TestCase):
         self.assertEqual(str(db.database), ':memory:')
 
     def test_setup_db_runs(self):
-        # Patch models and db methods
-        import types
         db.is_connection_usable = lambda: False
         db.connect = lambda: None
         db.create_tables = lambda tables, safe: None
-        # Patch import
-        sys_modules_backup = dict(__import__('sys').modules)
-        import sys
-        sys.modules['models.guild_music_information'] = types.SimpleNamespace(Guild='Guild')
-        sys.modules['models.queue_object'] = types.SimpleNamespace(QueueEntry='QueueEntry')
+
+        stubbed = {
+            'models.guild_music_information': types.SimpleNamespace(Guild='Guild'),
+            'models.queue_object': types.SimpleNamespace(QueueEntry='QueueEntry'),
+        }
+        original = {name: sys.modules.get(name) for name in stubbed}
+        sys.modules.update(stubbed)
+
         try:
-            import asyncio
             asyncio.run(setup_db())
         finally:
-            __import__('sys').modules.clear()
-            __import__('sys').modules.update(sys_modules_backup)
+            for name, module in original.items():
+                if module is None:
+                    sys.modules.pop(name, None)
+                else:
+                    sys.modules[name] = module
+
 
 if __name__ == '__main__':
     unittest.main()
