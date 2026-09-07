@@ -1,7 +1,5 @@
-# Latest pycord
-git+https://github.com/Pycord-Development/pycord
-# Pycord Audio dep
-PyNaCl
+# Latest pycord, with the voice extra (PyNaCl + davey)
+py-cord[voice] @ git+https://github.com/Pycord-Development/pycord
 # Pycord aiohttp speedup
 aiodns
 Brotli
