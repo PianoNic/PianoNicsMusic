@@ -7,7 +7,7 @@ from models.guild_music_information import Guild
 from models.queue_object import QueueEntry
 from models.mappers import guild_music_information_mapper
 from db_utils.db import db
-from media.argonfetch import Track
+from media.resolver import Track
 
 logger = logging.getLogger('PianoNicsMusic')
 
@@ -117,6 +117,18 @@ async def _next_entry(guild: Guild, guild_id: int) -> QueueEntry | None:
         (QueueEntry.already_played == False)
     ).order_by(QueueEntry.id).first()
 
+
+async def peek_queue_entry(guild_id: int) -> QueueEntry | None:
+    """The entry that plays next, without taking it. None when shuffling: that pick happens at play time."""
+    guild: Guild | None = Guild.get_or_none(Guild.id == guild_id)
+
+    if not guild or guild.shuffle_queue:
+        return None
+
+    return await _next_entry(guild, guild_id)
+
+async def count_remaining(guild_id: int) -> int:
+    return QueueEntry.select().where((QueueEntry.guild == guild_id) & (QueueEntry.already_played == False)).count()
 
 async def get_queue_entry(guild_id: int) -> str | None:
     try:

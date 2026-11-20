@@ -1,19 +1,21 @@
 import asyncio
 import logging
+import shlex
 
 import discord
 
 from db_utils import db_utils
-from discord_utils import embed_generator, responses
+from discord_utils import now_playing
 from discord_utils.dynamic_bass_boost import register_bass_boost, unregister_bass_boost
 from discord_utils.dynamic_earrape import register_earrape, unregister_earrape
 from discord_utils.dynamic_volume import DynamicVolumeTransformer, register_audio_source, unregister_audio_source
 from media import resolver
-from media.resolver import ArgonFetchError
 
 logger = logging.getLogger('PianoNicsMusic')
 
 CONNECTION_CHECK_SECONDS = 5
+# Muse starts resolving the next song a minute before this one ends.
+PREFETCH_LEAD_SECONDS = 60
 
 
 async def build_filter(guild_id: int) -> str:
@@ -34,10 +36,16 @@ async def build_filter(guild_id: int) -> str:
     return audio_filter
 
 
-async def wait_until_finished(voice_client, finished: asyncio.Event):
+async def wait_until_finished(voice_client, finished: asyncio.Event, on_tick=None):
     while not finished.is_set():
         if not voice_client.is_connected():
             return
+
+        if on_tick:
+            try:
+                await on_tick()
+            except Exception as error:
+                logger.warning(f"Playback tick failed: {error}")
 
         try:
             await asyncio.wait_for(asyncio.shield(finished.wait()), timeout=CONNECTION_CHECK_SECONDS)
@@ -46,33 +54,10 @@ async def wait_until_finished(voice_client, finished: asyncio.Event):
 
 
 async def play(ctx: discord.ApplicationContext, queue_url: str):
-    loading_message = await responses.reply(
-        ctx, await embed_generator.create_embed("Please Wait", "Searching song...")
-    )
+    await now_playing.show_loading(ctx, "Loading the next song...")
 
-    try:
-        music_information = await resolver.get_playable(queue_url)
-    except ArgonFetchError as error:
-        logger.error(f"Could not resolve {queue_url}: {error}")
-        await loading_message.edit(embed=await embed_generator.create_embed("⚠️ Track Error", str(error)))
-        raise
-    except Exception as error:
-        logger.error(f"Error getting streaming URL for {queue_url}: {error}")
-        await loading_message.edit(
-            embed=await embed_generator.create_embed("Error", "Failed to get song information. Skipping...")
-        )
-        raise
-
-    try:
-        await loading_message.edit(
-            embed=await embed_generator.create_embed(
-                "Now Playing",
-                f"**{music_information.song_name}**\nBy **{music_information.author}**",
-                music_information.image_url,
-            )
-        )
-    except Exception as error:
-        logger.error(f"Error updating loading message: {error}")
+    # MediaError carries a message for the user; play_queue reports it and moves on.
+    music_information = await resolver.get_playable(queue_url)
 
     voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
 
@@ -82,10 +67,20 @@ async def play(ctx: discord.ApplicationContext, queue_url: str):
     volume = await db_utils.get_volume(ctx.guild.id)
     audio_filter = await build_filter(ctx.guild.id)
 
+    # The whitelist keeps FFmpeg off file:// and friends, whatever URL reaches it.
+    before_options = (
+        "-nostdin -protocol_whitelist http,https,tcp,tls,crypto "
+        "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+    )
+
+    if music_information.http_headers:
+        headers = "".join(f"{key}: {value}\r\n" for key, value in music_information.http_headers.items())
+        before_options += f" -headers {shlex.quote(headers)}"
+
     audio_source = discord.FFmpegPCMAudio(
         music_information.streaming_url,
         options=f'-vn -filter:a "{audio_filter}"',
-        before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+        before_options=before_options,
     )
     audio_source = DynamicVolumeTransformer(audio_source, volume=volume)
 
@@ -102,13 +97,30 @@ async def play(ctx: discord.ApplicationContext, queue_url: str):
 
         loop.call_soon_threadsafe(finished.set)
 
+    prefetched = False
+
+    async def on_tick():
+        nonlocal prefetched
+        await now_playing.refresh(ctx.guild.id)
+
+        remaining = (music_information.duration or 0) - audio_source.elapsed
+
+        # A live stream has no end to count down to, so its successor is fetched right away.
+        if not prefetched and remaining <= PREFETCH_LEAD_SECONDS:
+            prefetched = True
+            upcoming = await db_utils.peek_queue_entry(ctx.guild.id)
+
+            if upcoming:
+                resolver.prefetch(upcoming.url)
+
     try:
         if voice_client.is_playing():
             voice_client.stop()
 
         voice_client.play(audio_source, after=on_finished)
+        await now_playing.show_track(ctx.guild.id, music_information, audio_source)
 
-        await wait_until_finished(voice_client, finished)
+        await wait_until_finished(voice_client, finished, on_tick)
     finally:
         unregister_audio_source(ctx.guild.id)
         unregister_bass_boost(ctx.guild.id)

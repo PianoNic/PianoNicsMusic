@@ -1,1 +1,1 @@
-"""Media resolution through an ArgonFetch instance."""
+"""Media resolution through yt-dlp."""

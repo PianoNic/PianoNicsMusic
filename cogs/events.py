@@ -1,3 +1,4 @@
+import asyncio
 import configparser
 import logging
 
@@ -5,6 +6,7 @@ from discord.ext import commands
 
 from db_utils.db import setup_db
 from discord_utils import embed_generator
+from media import resolver
 
 logger = logging.getLogger('PianoNicsMusic')
 
@@ -18,6 +20,10 @@ class Events(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         import discord
+
+        # on_ready fires again after every reconnect.
+        if not getattr(self, "updater", None):
+            self.updater = asyncio.create_task(resolver.keep_ytdlp_updated())
 
         await setup_db()
         await self.bot.change_presence(

@@ -6,6 +6,8 @@ Brotli
 charset-normalizer
 # Rest
 aiohttp
+yt-dlp[default]
+certifi
 requests
 python-dotenv
 peewee

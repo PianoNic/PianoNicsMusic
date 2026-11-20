@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock
 import asyncio
 from db_utils import db_utils
 from models.dtos.QueueEntryDto import QueueEntryDto
-from media.argonfetch import Track
+from media.resolver import Track
 
 class TestDBUtils(unittest.IsolatedAsyncioTestCase):
     @patch('db_utils.db_utils.Guild')
