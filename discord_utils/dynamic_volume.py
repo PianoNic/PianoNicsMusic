@@ -14,8 +14,18 @@ class DynamicVolumeTransformer(discord.PCMVolumeTransformer):
     def __init__(self, source, volume: float = 1.0):
         self._lock = threading.Lock()
         self._volume = volume
+        self.frames = 0
         super().__init__(source, volume=volume)
-    
+
+    def read(self) -> bytes:
+        # Discord pulls one 20 ms frame per read and stops pulling while paused.
+        self.frames += 1
+        return super().read()
+
+    @property
+    def elapsed(self) -> float:
+        return self.frames * 0.02
+
     @property
     def volume(self) -> float:
         """Get the current volume level"""

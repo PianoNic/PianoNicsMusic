@@ -4,17 +4,19 @@ import discord
 from discord.ext import commands
 
 import db_utils.db_utils as db_utils
-from discord_utils import embed_generator, player, responses
+from discord_utils import embed_generator, now_playing, player, responses
 from media import resolver
-from media.resolver import ArgonFetchError
+from media.resolver import MediaError
 
 logger = logging.getLogger('PianoNicsMusic')
+
+MAX_FAILURES_IN_A_ROW = 5
 
 
 async def resolve_tracks(ctx, query):
     try:
         return await resolver.get_tracks(query)
-    except ArgonFetchError as error:
+    except MediaError as error:
         await responses.fail(ctx, "Error", str(error))
     except Exception as error:
         logger.error(f"Error resolving {query}: {error}")
@@ -107,6 +109,8 @@ class Play(commands.Cog):
         await self.play_queue(ctx)
 
     async def play_queue(self, ctx):
+        failures = 0
+
         try:
             while True:
                 url = await db_utils.get_queue_entry(ctx.guild.id)
@@ -116,17 +120,29 @@ class Play(commands.Cog):
 
                 try:
                     await player.play(ctx, url)
+                    failures = 0
                 except Exception as error:
+                    failures += 1
                     logger.error(f"Error playing song {url}: {error}")
+                    reason = str(error) if isinstance(error, MediaError) else "Failed to play a song."
+
+                    # A dead source or a broken yt-dlp fails every track; don't chew through the whole queue.
+                    if failures >= MAX_FAILURES_IN_A_ROW:
+                        reason += f"\n{MAX_FAILURES_IN_A_ROW} songs failed in a row, so I stopped."
+
                     try:
-                        await responses.reply(
-                            ctx, await embed_generator.create_embed("Error", "Failed to play a song. Skipping to next...")
-                        )
+                        # The channel, not the interaction: its token is dead after 15 minutes.
+                        await ctx.channel.send(embed=await embed_generator.create_error_embed("⚠️ Skipped", reason))
                     except Exception as send_error:
                         logger.error(f"Failed to send error message: {send_error}")
+
+                    if failures >= MAX_FAILURES_IN_A_ROW:
+                        break
         except Exception as error:
             logger.critical(f"Critical error in play loop: {error}")
         finally:
+            await now_playing.close(ctx.guild.id)
+
             voice_client = discord.utils.get(self.bot.voice_clients, guild=ctx.guild)
 
             if voice_client:
