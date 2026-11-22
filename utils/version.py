@@ -1,8 +1,8 @@
 # Bot version information
-BOT_VERSION = "2.0.1" 
+BOT_VERSION = "2.0.2" 
 BOT_NAME = "PianoNics-Music"
 BOT_AUTHOR = "PianoNic"
-BOT_RELEASE_DATE = "2026-09-07"
+BOT_RELEASE_DATE = "2026-11-22"
 
 def get_version():
     """Get the current bot version"""
